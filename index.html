@@ -130,7 +130,6 @@
     .cell .placeholder svg { width: 14px; height: 14px; fill: #666; }
     .cell input[type="file"] { display: none; }
 
-    /* 취소 X 버튼이 늘어나는 현상 고침 (크기 고정) */
     .btn-delete-cell {
       position: absolute;
       top: 2px;
@@ -235,7 +234,7 @@
     <button class="btn-json" onclick="exportJSONProject()">💾 프로젝트 저장 (.json)</button>
     <button class="btn-json" onclick="triggerImportJSON()">📂 프로젝트 불러오기</button>
     <input type="file" id="json-file-input" accept=".json" style="display:none;" onchange="importJSONProject(this.files[0])">
-    <button id="btn-bg-toggle" class="btn-option" onclick="toggleBgOption()">빈 셀 배경: 포함</button>
+    <button id="btn-bg-toggle" class="btn-option" onclick="toggleBgOption()">빈 셀 배경 포함</button>
     <button id="btn-swap-mode" class="btn-swap" onclick="toggleSwapMode()">위치 교환</button>
     <button class="btn-reset" onclick="resetGrid()">전체 초기화</button>
   </div>
@@ -306,7 +305,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-  <!-- 자바스크립트 영역 시작 -->
   <script>
     const gridContainer = document.getElementById('grid-container');
     const gridWrapper = document.getElementById('grid-wrapper');
@@ -325,7 +323,17 @@
     
     let isSwapMode = false;
     let swapSourceKey = null;
-    let includeEmptyBg = true;
+
+    // 1. 페이지 최초 로드 시 localStorage에 저장된 값을 읽어서 includeEmptyBg에 적용 (없으면 기본값 true)
+    const savedIncludeEmptyBg = localStorage.getItem('cody_include_empty_bg');
+    let includeEmptyBg = savedIncludeEmptyBg !== null ? JSON.parse(savedIncludeEmptyBg) : true;
+
+    // 불러온 상태에 맞게 토글 버튼의 문구 업데이트
+    function updateBgToggleButtonUI() {
+      if (btnBgToggle) {
+        btnBgToggle.innerText = includeEmptyBg ? '빈 셀 배경 포함' : '빈 셀 배경 제외';
+      }
+    }
 
     let touchStartKey = null;
     let touchStartCell = null;
@@ -617,6 +625,7 @@
         version: '1.0',
         cols: currentCols,
         rows: currentRows,
+        includeEmptyBg: includeEmptyBg,
         cells: {}
       };
 
@@ -669,10 +678,15 @@
 
             currentCols = projectData.cols;
             currentRows = projectData.rows;
+            includeEmptyBg = typeof projectData.includeEmptyBg === 'boolean' ? projectData.includeEmptyBg : true;
+
             selectCols.value = currentCols;
             selectRows.value = currentRows;
             localStorage.setItem('cody_grid_cols', currentCols);
             localStorage.setItem('cody_grid_rows', currentRows);
+            localStorage.setItem('cody_include_empty_bg', JSON.stringify(includeEmptyBg));
+
+            updateBgToggleButtonUI();
 
             Object.keys(projectData.cells).forEach(key => {
               const cellObj = projectData.cells[key];
@@ -745,11 +759,17 @@
       const img2 = localStorage.getItem(`cody_${key2}`);
       const filter2 = localStorage.getItem(`cody_filters_${key2}`);
 
-      if (img2) localStorage.setItem(`cody_${key1}`, img2); else localStorage.removeItem(`cody_${key1}`);
-      if (filter2) localStorage.setItem(`cody_filters_${key1}`, filter2); else localStorage.removeItem(`cody_filters_${key1}`);
+      if (img2) localStorage.setItem(`cody_${key1}`, img2); 
+      else localStorage.removeItem(`cody_${key1}`);
 
-      if (img1) localStorage.setItem(`cody_${key2}`, img1); else localStorage.removeItem(`cody_${key2}`);
-      if (filter1) localStorage.setItem(`cody_filters_${key2}`, filter1); else localStorage.removeItem(`cody_filters_${key1}`);
+      if (img1) localStorage.setItem(`cody_${key2}`, img1); 
+      else localStorage.removeItem(`cody_${key2}`);
+
+      if (filter2) localStorage.setItem(`cody_filters_${key1}`, filter2); 
+      else localStorage.removeItem(`cody_filters_${key1}`);
+
+      if (filter1) localStorage.setItem(`cody_filters_${key2}`, filter1); 
+      else localStorage.removeItem(`cody_filters_${key2}`);
 
       renderGrid();
     }
@@ -787,9 +807,11 @@
       }
     }
 
+    // 2. 「빈 셀 배경」 토글 클릭 시 includeEmptyBg 변경 및 localStorage 저장
     function toggleBgOption() {
       includeEmptyBg = !includeEmptyBg;
-      btnBgToggle.innerText = `빈 셀 배경: ${includeEmptyBg ? '포함' : '투명'}`;
+      localStorage.setItem('cody_include_empty_bg', JSON.stringify(includeEmptyBg));
+      updateBgToggleButtonUI();
     }
 
     function changeGridSize() {
@@ -972,8 +994,8 @@
     }
 
     initSelectOptions();
+    updateBgToggleButtonUI(); // 복원된 includeEmptyBg 상태로 토글 버튼 UI 갱신
     renderGrid();
   </script>
-  <!-- 자바스크립트 영역 끝 -->
 </body>
 </html>
