@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>5x5 캐릭터 코디표 매니저</title>
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%234da6ff'><path d='M12 4.5C10.62 4.5 9.5 5.62 9.5 7c0 .52.16 1 .44 1.4L3 13.5v2h18v-2l-6.94-5.1c.28-.4.44-.88.44-1.4 0-1.38-1.12-2.5-2.5-2.5zm0 2c.28 0 .5.22.5.5s-.22.5-.5.5-.5-.22-.5-.5.22-.5.5-.5zm-7 8.5l7-5.15 7 5.15H5z'/></svg>">
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Pretendard', sans-serif; background-color: #1e1e24; color: #fff; padding: 12px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    
+    .header-title { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .header-title svg { width: 26px; height: 26px; fill: #4da6ff; }
+    h1 { font-size: 20px; color: #4da6ff; }
+    p.guide { margin-bottom: 15px; color: #aaa; font-size: 12px; text-align: center; line-height: 1.4; }
+    
+    .btn-group { margin-bottom: 15px; display: flex; gap: 8px; width: 100%; max-width: 600px; }
+    button { padding: 12px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 4px; flex: 1; }
+    .btn-save { background-color: #28a745; color: white; }
+    .btn-reset { background-color: #dc3545; color: white; }
+    
+    #grid-container {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      background-color: #111;
+      padding: 8px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      width: 100%;
+      max-width: 600px;
+      aspect-ratio: 1 / 1;
+      margin-bottom: 15px;
+    }
+    .cell {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      background-color: #2a2a35;
+      border: 1px dashed #555;
+      border-radius: 4px;
+      overflow: hidden;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .cell.selected { border: 2px solid #4da6ff; box-shadow: 0 0 8px rgba(77, 166, 255, 0.6); }
+    .cell img { width: 100%; height: 100%; object-fit: cover; display: none; }
+    .cell .placeholder { color: #888; font-size: 10px; text-align: center; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .cell .placeholder svg { width: 16px; height: 16px; fill: #666; }
+    .cell input[type="file"] { display: none; }
+
+    /* 모바일용 개별 칸 삭제 버튼 (✕) */
+    .btn-delete-cell {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      background: rgba(220, 53, 69, 0.9);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 11px;
+      line-height: 20px;
+      text-align: center;
+      cursor: pointer;
+      display: none;
+      z-index: 5;
+      padding: 0;
+    }
+    .btn-delete-cell.active { display: block; }
+
+    /* 모바일 편집 패널 */
+    #edit-panel {
+      display: none;
+      width: 100%;
+      max-width: 600px;
+      background-color: #111;
+      padding: 12px;
+      border-radius: 8px;
+      box-shadow: 0 -4px 10px rgba(0,0,0,0.4);
+      position: sticky;
+      bottom: 10px;
+      z-index: 10;
+    }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: #4da6ff; }
+    .panel-header h3 { font-size: 14px; }
+    .btn-close { background: none; color: #dc3545; border: 1px solid #dc3545; padding: 2px 6px; font-size: 11px; flex: initial; }
+    
+    .filter-controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .filter-item { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #aaa; }
+    .filter-item input[type="range"] { width: 100%; -webkit-appearance: none; background: #333; height: 8px; border-radius: 4px; outline: none; }
+    .filter-item input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #4da6ff; border-radius: 50%; cursor: pointer; }
+    .filter-value { font-size: 10px; text-align: right; color: #888; }
+  </style>
+</head>
+<body>
+
+  <div class="header-title">
+    <svg viewBox="0 0 24 24"><path d="M12 4.5C10.62 4.5 9.5 5.62 9.5 7c0 .52.16 1 .44 1.4L3 13.5v2h18v-2l-6.94-5.1c.28-.4.44-.88.44-1.4 0-1.38-1.12-2.5-2.5-2.5zm0 2c.28 0 .5.22.5.5s-.22.5-.5.5-.5-.22-.5-.5.22-.5.5-.5zm-7 8.5l7-5.15 7 5.15H5z"/></svg>
+    <h1>5x5 코디표 매니저</h1>
+  </div>
+  <p class="guide">칸을 터치하여 이미지 등록/편집. 우측 상단 ✕로 단일 삭제 가능.</p>
+
+  <div class="btn-group">
+    <button class="btn-save" onclick="downloadGrid()">[이미지 저장]</button>
+    <button class="btn-reset" onclick="resetGrid()">전체 초기화</button>
+  </div>
+
+  <div id="grid-container"></div>
+
+  <div id="edit-panel">
+    <div class="panel-header">
+      <h3>🎨 색감(필터) 편집</h3>
+      <button class="btn-close" onclick="closeEditPanel()">닫기</button>
+    </div>
+    <div class="filter-controls">
+      <div class="filter-item">
+        <label>밝기</label>
+        <input type="range" id="brightness" min="0" max="200" value="100" oninput="applyFilters()">
+        <span class="filter-value" id="brightness-val">100%</span>
+      </div>
+      <div class="filter-item">
+        <label>대비</label>
+        <input type="range" id="contrast" min="0" max="200" value="100" oninput="applyFilters()">
+        <span class="filter-value" id="contrast-val">100%</span>
+      </div>
+      <div class="filter-item">
+        <label>채도</label>
+        <input type="range" id="saturate" min="0" max="200" value="100" oninput="applyFilters()">
+        <span class="filter-value" id="saturate-val">100%</span>
+      </div>
+      <div class="filter-item">
+        <label>색상</label>
+        <input type="range" id="hue-rotate" min="0" max="360" value="0" oninput="applyFilters()">
+        <span class="filter-value" id="hue-rotate-val">0deg</span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 6px; margin-top: 8px;">
+      <button class="btn-reset" style="background-color: #666;" onclick="resetFilters()">필터 리셋</button>
+      <button class="btn-reset" onclick="deleteSelectedCellImage()">사진 지우기</button>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script>
+    const gridContainer = document.getElementById('grid-container');
+    const editPanel = document.getElementById('edit-panel');
+    const TOTAL_CELLS = 25;
+    let currentSelectedCell = null;
+
+    const filters = {
+      brightness: document.getElementById('brightness'),
+      contrast: document.getElementById('contrast'),
+      saturate: document.getElementById('saturate'),
+      'hue-rotate': document.getElementById('hue-rotate')
+    };
+
+    const filterValues = {
+      brightness: document.getElementById('brightness-val'),
+      contrast: document.getElementById('contrast-val'),
+      saturate: document.getElementById('saturate-val'),
+      'hue-rotate': document.getElementById('hue-rotate-val')
+    };
+
+    for (let i = 0; i < TOTAL_CELLS; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.index = i;
+
+      const placeholder = document.createElement('div');
+      placeholder.className = 'placeholder';
+      placeholder.innerHTML = `
+        <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        <span>${i + 1}</span>
+      `;
+
+      const img = document.createElement('img');
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn-delete-cell';
+      deleteBtn.innerHTML = '✕';
+
+      const savedImage = localStorage.getItem(`cody_cell_${i}`);
+      const savedFilters = localStorage.getItem(`cody_filters_${i}`);
+
+      if (savedImage) {
+        img.src = savedImage;
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+        deleteBtn.classList.add('active');
+        if (savedFilters) img.style.filter = savedFilters;
+      }
+
+      cell.appendChild(placeholder);
+      cell.appendChild(img);
+      cell.appendChild(fileInput);
+      cell.appendChild(deleteBtn);
+
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearSingleCell(i, cell, img, placeholder, deleteBtn);
+      });
+
+      cell.addEventListener('click', (e) => {
+        if (!img.src || img.style.display === 'none') {
+          fileInput.click();
+          closeEditPanel();
+          return;
+        }
+
+        if (currentSelectedCell) currentSelectedCell.classList.remove('selected');
+        
+        if (currentSelectedCell === cell) {
+          currentSelectedCell = null;
+          closeEditPanel();
+          return;
+        }
+
+        currentSelectedCell = cell;
+        cell.classList.add('selected');
+        openEditPanel(i);
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function(evt) {
+            img.src = evt.target.result;
+            img.style.display = 'block';
+            placeholder.style.display = 'none';
+            deleteBtn.classList.add('active');
+            img.style.filter = '';
+            localStorage.setItem(`cody_cell_${i}`, evt.target.result);
+            localStorage.removeItem(`cody_filters_${i}`);
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      gridContainer.appendChild(cell);
+    }
+
+    function clearSingleCell(index, cell, img, placeholder, deleteBtn) {
+      img.src = '';
+      img.style.display = 'none';
+      img.style.filter = '';
+      placeholder.style.display = 'flex';
+      deleteBtn.classList.remove('active');
+      localStorage.removeItem(`cody_cell_${index}`);
+      localStorage.removeItem(`cody_filters_${index}`);
+      
+      if (currentSelectedCell === cell) {
+        closeEditPanel();
+      }
+    }
+
+    function deleteSelectedCellImage() {
+      if (!currentSelectedCell) return;
+      const index = currentSelectedCell.dataset.index;
+      const img = currentSelectedCell.querySelector('img');
+      const placeholder = currentSelectedCell.querySelector('.placeholder');
+      const deleteBtn = currentSelectedCell.querySelector('.btn-delete-cell');
+      clearSingleCell(index, currentSelectedCell, img, placeholder, deleteBtn);
+    }
+
+    function openEditPanel(index) {
+      editPanel.style.display = 'block';
+      const savedFilters = localStorage.getItem(`cody_filters_${index}`);
+
+      if (savedFilters) {
+        const filterMap = savedFilters.split(' ').reduce((map, filter) => {
+          const [name, valueWithUnit] = filter.split('(');
+          if (name && valueWithUnit) map[name] = valueWithUnit.replace(')', '');
+          return map;
+        }, {});
+
+        filters.brightness.value = filterMap.brightness ? filterMap.brightness.replace('%', '') : 100;
+        filters.contrast.value = filterMap.contrast ? filterMap.contrast.replace('%', '') : 100;
+        filters.saturate.value = filterMap.saturate ? filterMap.saturate.replace('%', '') : 100;
+        filters['hue-rotate'].value = filterMap['hue-rotate'] ? filterMap['hue-rotate'].replace('deg', '') : 0;
+      } else {
+        resetFilters(false);
+      }
+      updateFilterValueDisplays();
+    }
+
+    function closeEditPanel() {
+      if (currentSelectedCell) currentSelectedCell.classList.remove('selected');
+      currentSelectedCell = null;
+      editPanel.style.display = 'none';
+    }
+
+    function applyFilters() {
+      if (!currentSelectedCell) return;
+      const img = currentSelectedCell.querySelector('img');
+      const index = currentSelectedCell.dataset.index;
+
+      const filterStr = `brightness(${filters.brightness.value}%) contrast(${filters.contrast.value}%) saturate(${filters.saturate.value}%) hue-rotate(${filters['hue-rotate'].value}deg)`;
+      
+      img.style.filter = filterStr;
+      updateFilterValueDisplays();
+      localStorage.setItem(`cody_filters_${index}`, filterStr);
+    }
+
+    function updateFilterValueDisplays() {
+      filterValues.brightness.innerText = `${filters.brightness.value}%`;
+      filterValues.contrast.innerText = `${filters.contrast.value}%`;
+      filterValues.saturate.innerText = `${filters.saturate.value}%`;
+      filterValues['hue-rotate'].innerText = `${filters['hue-rotate'].value}deg`;
+    }
+
+    function resetFilters(save = true) {
+      filters.brightness.value = 100;
+      filters.contrast.value = 100;
+      filters.saturate.value = 100;
+      filters['hue-rotate'].value = 0;
+      
+      if (currentSelectedCell) {
+        const img = currentSelectedCell.querySelector('img');
+        const index = currentSelectedCell.dataset.index;
+        img.style.filter = '';
+        updateFilterValueDisplays();
+        if (save) localStorage.removeItem(`cody_filters_${index}`);
+      }
+    }
+
+    function downloadGrid() {
+      html2canvas(gridContainer, { useCORS: true, scale: 2 }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = '5x5_코디표.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
+    }
+
+    function resetGrid() {
+      if (confirm('모든 칸의 이미지를 초기화하시겠습니까?')) {
+        for (let i = 0; i < TOTAL_CELLS; i++) {
+          localStorage.removeItem(`cody_cell_${i}`);
+          localStorage.removeItem(`cody_filters_${i}`);
+        }
+        location.reload();
+      }
+    }
+  </script>
+</body>
+</html>
