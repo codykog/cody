@@ -46,17 +46,26 @@
     button { padding: 12px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 4px; flex: 1; }
     .btn-save { background-color: #28a745; color: white; }
     .btn-reset { background-color: #dc3545; color: white; }
+    .btn-swap { background-color: #ff9800; color: white; }
+    .btn-swap.active { background-color: #e65100; box-shadow: 0 0 8px #ff9800; }
     
-    #grid-container {
-      display: grid;
-      gap: 4px;
+    /* 스크롤 가능한 그리드 래퍼 */
+    .grid-wrapper {
+      width: 100%;
+      max-width: 600px;
+      overflow-x: auto;
+      margin-bottom: 15px;
       background-color: #111;
       padding: 8px;
       border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    #grid-container {
+      display: grid;
+      gap: 4px;
       width: 100%;
-      max-width: 600px;
-      margin-bottom: 15px;
+      min-width: 280px;
     }
     .cell {
       position: relative;
@@ -70,14 +79,17 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
+      user-select: none;
     }
+    .cell.dragover { border: 2px dashed #4da6ff; background-color: #3b3b4f; }
     .cell.selected { border: 2px solid #4da6ff; box-shadow: 0 0 8px rgba(77, 166, 255, 0.6); }
-    .cell img { width: 100%; height: 100%; object-fit: cover; display: none; }
+    .cell.swap-source { border: 2px solid #ff9800; box-shadow: 0 0 8px rgba(255, 152, 0, 0.8); }
+    .cell img { width: 100%; height: 100%; object-fit: cover; display: none; pointer-events: none; }
     .cell .placeholder { color: #888; font-size: 10px; text-align: center; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 2px; }
     .cell .placeholder svg { width: 14px; height: 14px; fill: #666; }
     .cell input[type="file"] { display: none; }
 
-    /* 모바일용 개별 칸 삭제 버튼 (✕) */
+    /* 개별 칸 삭제 버튼 (✕) */
     .btn-delete-cell {
       position: absolute;
       top: 2px;
@@ -98,10 +110,10 @@
     }
     .btn-delete-cell.active { display: block; }
 
-    /* 캡처 시 테두리 제거용 */
+    /* 캡처 시 테두리 및 그림자 제거 */
     .capturing .cell { border: none !important; box-shadow: none !important; }
 
-    /* 모바일 편집 패널 */
+    /* 편집 패널 */
     #edit-panel {
       display: none;
       width: 100%;
@@ -123,6 +135,29 @@
     .filter-item input[type="range"] { width: 100%; -webkit-appearance: none; background: #333; height: 8px; border-radius: 4px; outline: none; }
     .filter-item input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #4da6ff; border-radius: 50%; cursor: pointer; }
     .filter-value { font-size: 10px; text-align: right; color: #888; }
+
+    /* 저장 중 로딩 오버레이 */
+    #loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      font-size: 14px;
+      gap: 12px;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 4px solid #333;
+      border-top: 4px solid #4da6ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -131,7 +166,7 @@
     <svg viewBox="0 0 24 24"><path d="M12 4.5C10.62 4.5 9.5 5.62 9.5 7c0 .52.16 1 .44 1.4L3 13.5v2h18v-2l-6.94-5.1c.28-.4.44-.88.44-1.4 0-1.38-1.12-2.5-2.5-2.5zm0 2c.28 0 .5.22.5.5s-.22.5-.5.5-.5-.22-.5-.5.22-.5.5-.5zm-7 8.5l7-5.15 7 5.15H5z"/></svg>
     <h1>코디표 매니저</h1>
   </div>
-  <p class="guide">가로/세로 칸 수를 조절할 수 있습니다. (최대 10x10)</p>
+  <p class="guide">클릭/드래그로 이미지 등록 · 위치 교환 버튼으로 사진 이동 가능</p>
 
   <!-- 그리드 규격 조절 드롭다운 -->
   <div class="grid-control-panel">
@@ -148,10 +183,13 @@
 
   <div class="btn-group">
     <button class="btn-save" onclick="downloadGrid()">[이미지 저장]</button>
+    <button id="btn-swap-mode" class="btn-swap" onclick="toggleSwapMode()">위치 교환</button>
     <button class="btn-reset" onclick="resetGrid()">전체 초기화</button>
   </div>
 
-  <div id="grid-container"></div>
+  <div class="grid-wrapper">
+    <div id="grid-container"></div>
+  </div>
 
   <div id="edit-panel">
     <div class="panel-header">
@@ -186,16 +224,28 @@
     </div>
   </div>
 
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <span>고화질 이미지 생성 중...</span>
+  </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script>
     const gridContainer = document.getElementById('grid-container');
     const editPanel = document.getElementById('edit-panel');
     const selectCols = document.getElementById('select-cols');
     const selectRows = document.getElementById('select-rows');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const btnSwapMode = document.getElementById('btn-swap-mode');
     
     let currentCols = parseInt(localStorage.getItem('cody_grid_cols')) || 5;
     let currentRows = parseInt(localStorage.getItem('cody_grid_rows')) || 5;
     let currentSelectedCell = null;
+    
+    let isSwapMode = false;
+    let swapSourceKey = null;
+
+    const defaultFilters = { brightness: 100, contrast: 100, saturate: 100, 'hue-rotate': 0 };
 
     const filters = {
       brightness: document.getElementById('brightness'),
@@ -211,18 +261,17 @@
       'hue-rotate': document.getElementById('hue-rotate-val')
     };
 
-    // 옵션 생성 (2부터 10까지)
     function initSelectOptions() {
+      selectCols.innerHTML = '';
+      selectRows.innerHTML = '';
       for (let i = 2; i <= 10; i++) {
         const optC = document.createElement('option');
-        optC.value = i;
-        optC.textContent = i;
+        optC.value = i; optC.textContent = i;
         if (i === currentCols) optC.selected = true;
         selectCols.appendChild(optC);
 
         const optR = document.createElement('option');
-        optR.value = i;
-        optR.textContent = i;
+        optR.value = i; optR.textContent = i;
         if (i === currentRows) optR.selected = true;
         selectRows.appendChild(optR);
       }
@@ -258,14 +307,16 @@
           deleteBtn.innerHTML = '✕';
 
           const savedImage = localStorage.getItem(`cody_${key}`);
-          const savedFilters = localStorage.getItem(`cody_filters_${key}`);
+          const savedFilterObj = JSON.parse(localStorage.getItem(`cody_filters_${key}`));
 
           if (savedImage) {
             img.src = savedImage;
             img.style.display = 'block';
             placeholder.style.display = 'none';
             deleteBtn.classList.add('active');
-            if (savedFilters) img.style.filter = savedFilters;
+            if (savedFilterObj) {
+              img.style.filter = buildFilterString(savedFilterObj);
+            }
           }
 
           cell.appendChild(placeholder);
@@ -273,12 +324,19 @@
           cell.appendChild(fileInput);
           cell.appendChild(deleteBtn);
 
+          // 삭제 버튼 이벤트
           deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             clearSingleCell(key, cell, img, placeholder, deleteBtn);
           });
 
+          // 클릭 및 교환 이벤트
           cell.addEventListener('click', () => {
+            if (isSwapMode) {
+              handleSwapClick(key, cell);
+              return;
+            }
+
             if (!img.src || img.style.display === 'none') {
               fileInput.click();
               closeEditPanel();
@@ -298,25 +356,104 @@
             openEditPanel(key);
           });
 
+          // 파일 업로드 이벤트 (이미지 자동 리사이징 압축)
           fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
-            if (file) {
-              const reader = new FileReader();
-              reader.onload = function(evt) {
-                img.src = evt.target.result;
-                img.style.display = 'block';
-                placeholder.style.display = 'none';
-                deleteBtn.classList.add('active');
-                img.style.filter = '';
-                localStorage.setItem(`cody_${key}`, evt.target.result);
-                localStorage.removeItem(`cody_filters_${key}`);
-              };
-              reader.readAsDataURL(file);
+            if (file) processAndSaveImage(file, key, img, placeholder, deleteBtn);
+          });
+
+          // PC 드래그 앤 드롭 업로드 지원
+          cell.addEventListener('dragover', (e) => { e.preventDefault(); cell.classList.add('dragover'); });
+          cell.addEventListener('dragleave', () => { cell.classList.remove('dragover'); });
+          cell.addEventListener('drop', (e) => {
+            e.preventDefault();
+            cell.classList.remove('dragover');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+              processAndSaveImage(e.dataTransfer.files[0], key, img, placeholder, deleteBtn);
             }
           });
 
           gridContainer.appendChild(cell);
         }
+      }
+    }
+
+    /* 이미지 리사이징 처리 (localStorage 용량 초과 방지) */
+    function processAndSaveImage(file, key, img, placeholder, deleteBtn) {
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const tempImg = new Image();
+        tempImg.onload = function() {
+          const maxDim = 800; // 최대 해상도 제한
+          let w = tempImg.width, h = tempImg.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(tempImg, 0, 0, w, h);
+
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+          img.src = compressedDataUrl;
+          img.style.display = 'block';
+          placeholder.style.display = 'none';
+          deleteBtn.classList.add('active');
+          img.style.filter = '';
+          
+          try {
+            localStorage.setItem(`cody_${key}`, compressedDataUrl);
+            localStorage.removeItem(`cody_filters_${key}`);
+          } catch(err) {
+            alert('저장 공간이 부족합니다. 용량이 작은 이미지를 사용해 주세요.');
+          }
+        };
+        tempImg.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    /* 위치 교환 기능 */
+    function toggleSwapMode() {
+      isSwapMode = !isSwapMode;
+      swapSourceKey = null;
+      closeEditPanel();
+
+      document.querySelectorAll('.cell').forEach(c => c.classList.remove('swap-source'));
+
+      if (isSwapMode) {
+        btnSwapMode.classList.add('active');
+        btnSwapMode.innerText = '교환 진행 중...';
+      } else {
+        btnSwapMode.classList.remove('active');
+        btnSwapMode.innerText = '위치 교환';
+      }
+    }
+
+    function handleSwapClick(key, cell) {
+      if (!swapSourceKey) {
+        swapSourceKey = key;
+        cell.classList.add('swap-source');
+      } else {
+        if (swapSourceKey !== key) {
+          // 데이터 교환
+          const img1 = localStorage.getItem(`cody_${swapSourceKey}`);
+          const filter1 = localStorage.getItem(`cody_filters_${swapSourceKey}`);
+          const img2 = localStorage.getItem(`cody_${key}`);
+          const filter2 = localStorage.getItem(`cody_filters_${key}`);
+
+          if (img2) localStorage.setItem(`cody_${swapSourceKey}`, img2); else localStorage.removeItem(`cody_${swapSourceKey}`);
+          if (filter2) localStorage.setItem(`cody_filters_${swapSourceKey}`, filter2); else localStorage.removeItem(`cody_filters_${swapSourceKey}`);
+
+          if (img1) localStorage.setItem(`cody_${key}`, img1); else localStorage.removeItem(`cody_${key}`);
+          if (filter1) localStorage.setItem(`cody_filters_${key}`, filter1); else localStorage.removeItem(`cody_filters_${key}`);
+
+          renderGrid();
+        }
+        toggleSwapMode();
       }
     }
 
@@ -337,9 +474,7 @@
       localStorage.removeItem(`cody_${key}`);
       localStorage.removeItem(`cody_filters_${key}`);
       
-      if (currentSelectedCell === cell) {
-        closeEditPanel();
-      }
+      if (currentSelectedCell === cell) closeEditPanel();
     }
 
     function deleteSelectedCellImage() {
@@ -351,24 +486,19 @@
       clearSingleCell(key, currentSelectedCell, img, placeholder, deleteBtn);
     }
 
+    function buildFilterString(f) {
+      return `brightness(${f.brightness}%) contrast(${f.contrast}%) saturate(${f.saturate}%) hue-rotate(${f['hue-rotate']}deg)`;
+    }
+
     function openEditPanel(key) {
       editPanel.style.display = 'block';
-      const savedFilters = localStorage.getItem(`cody_filters_${key}`);
+      const savedFilterObj = JSON.parse(localStorage.getItem(`cody_filters_${key}`)) || defaultFilters;
 
-      if (savedFilters) {
-        const filterMap = savedFilters.split(' ').reduce((map, filter) => {
-          const [name, valueWithUnit] = filter.split('(');
-          if (name && valueWithUnit) map[name] = valueWithUnit.replace(')', '');
-          return map;
-        }, {});
+      filters.brightness.value = savedFilterObj.brightness;
+      filters.contrast.value = savedFilterObj.contrast;
+      filters.saturate.value = savedFilterObj.saturate;
+      filters['hue-rotate'].value = savedFilterObj['hue-rotate'];
 
-        filters.brightness.value = filterMap.brightness ? filterMap.brightness.replace('%', '') : 100;
-        filters.contrast.value = filterMap.contrast ? filterMap.contrast.replace('%', '') : 100;
-        filters.saturate.value = filterMap.saturate ? filterMap.saturate.replace('%', '') : 100;
-        filters['hue-rotate'].value = filterMap['hue-rotate'] ? filterMap['hue-rotate'].replace('deg', '') : 0;
-      } else {
-        resetFilters(false);
-      }
       updateFilterValueDisplays();
     }
 
@@ -383,11 +513,16 @@
       const img = currentSelectedCell.querySelector('img');
       const key = currentSelectedCell.dataset.key;
 
-      const filterStr = `brightness(${filters.brightness.value}%) contrast(${filters.contrast.value}%) saturate(${filters.saturate.value}%) hue-rotate(${filters['hue-rotate'].value}deg)`;
-      
-      img.style.filter = filterStr;
+      const fVal = {
+        brightness: parseInt(filters.brightness.value),
+        contrast: parseInt(filters.contrast.value),
+        saturate: parseInt(filters.saturate.value),
+        'hue-rotate': parseInt(filters['hue-rotate'].value)
+      };
+
+      img.style.filter = buildFilterString(fVal);
       updateFilterValueDisplays();
-      localStorage.setItem(`cody_filters_${key}`, filterStr);
+      localStorage.setItem(`cody_filters_${key}`, JSON.stringify(fVal));
     }
 
     function updateFilterValueDisplays() {
@@ -412,25 +547,34 @@
       }
     }
 
+    /* 고화질 이미지 다운로드 + 로딩 스피너 적용 */
     function downloadGrid() {
+      loadingOverlay.style.display = 'flex';
       document.body.classList.add('capturing');
 
-      html2canvas(gridContainer, {
-        useCORS: true,
-        scale: 3,
-        ignoreElements: (element) => {
-          if (element.classList.contains('btn-delete-cell')) return true;
-          if (element.classList.contains('placeholder') && element.style.display !== 'none') return true;
-          return false;
-        }
-      }).then(canvas => {
-        const link = document.createElement('a');
-        link.download = `${currentCols}x${currentRows}_코디표.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
+      setTimeout(() => {
+        html2canvas(gridContainer, {
+          useCORS: true,
+          scale: 3,
+          ignoreElements: (element) => {
+            if (element.classList.contains('btn-delete-cell')) return true;
+            if (element.classList.contains('placeholder') && element.style.display !== 'none') return true;
+            return false;
+          }
+        }).then(canvas => {
+          const link = document.createElement('a');
+          link.download = `${currentCols}x${currentRows}_코디표.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
 
-        document.body.classList.remove('capturing');
-      });
+          document.body.classList.remove('capturing');
+          loadingOverlay.style.display = 'none';
+        }).catch(err => {
+          document.body.classList.remove('capturing');
+          loadingOverlay.style.display = 'none';
+          alert('이미지 저장 중 오류가 발생했습니다.');
+        });
+      }, 100);
     }
 
     function resetGrid() {
@@ -440,7 +584,6 @@
       }
     }
 
-    // 초기화
     initSelectOptions();
     renderGrid();
   </script>
