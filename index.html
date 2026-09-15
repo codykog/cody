@@ -73,7 +73,6 @@
       transition: background-color 0.2s;
     }
 
-    /* 일괄 오버레이 안내 드래그 효과 */
     .grid-wrapper.batch-dragover::after {
       content: '📁 여기에 사진들을 놓으면 일괄 등록됩니다!';
       position: absolute;
@@ -325,6 +324,9 @@
     let touchStartKey = null;
     let touchStartCell = null;
 
+    // 용량 경고 팝업 반복 제어 플래그
+    let isQuotaAlertShown = false;
+
     const defaultFilters = { 
       brightness: 100, contrast: 100, saturate: 100, 'hue-rotate': 0,
       scale: 100, offsetX: 0, offsetY: 0 
@@ -465,7 +467,6 @@
             if (file) processAndSaveImage(file, key, img, placeholder, deleteBtn);
           });
 
-          // 모바일 터치 이벤트
           cell.addEventListener('touchstart', (e) => {
             if (isSwapMode || !img.src || img.style.display === 'none') return;
             touchStartKey = key;
@@ -502,7 +503,6 @@
             touchStartCell = null;
           });
 
-          // PC 단일/다중 드래그 앤 드롭
           cell.addEventListener('dragover', (e) => { e.preventDefault(); cell.classList.add('dragover'); });
           cell.addEventListener('dragleave', () => { cell.classList.remove('dragover'); });
           cell.addEventListener('drop', (e) => {
@@ -521,7 +521,6 @@
       }
     }
 
-    // --- [다중 파일 일괄 드래그 오버레이 처리] ---
     gridWrapper.addEventListener('dragover', (e) => {
       e.preventDefault();
       if (e.dataTransfer.types.includes('Files')) {
@@ -547,7 +546,7 @@
       document.getElementById('batch-file-input').click();
     }
 
-    /* 다중 이미지 순차 처리 함수 */
+    /* 다중 이미지 처리 (개선됨: 압축 강화 & 반복 팝업 차단) */
     async function handleBatchFiles(files) {
       if (!files || files.length === 0) return;
 
@@ -557,10 +556,10 @@
         return;
       }
 
+      isQuotaAlertShown = false;
       loadingText.innerText = `총 ${imageFiles.length}장의 사진 업로드 중...`;
       loadingOverlay.style.display = 'flex';
 
-      // 1번 칸부터 시작하여 순차적으로 채우기
       let currentFileIdx = 0;
 
       for (let r = 0; r < currentRows; r++) {
@@ -570,12 +569,12 @@
           const key = `cell_${r}_${c}`;
           const file = imageFiles[currentFileIdx];
 
-          await new Promise((resolve) => {
+          const success = await new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = function(evt) {
               const tempImg = new Image();
               tempImg.onload = function() {
-                const maxDim = 800;
+                const maxDim = 600; // 800 -> 600으로 압축률 강화
                 let w = tempImg.width, h = tempImg.height;
                 if (w > maxDim || h > maxDim) {
                   if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
@@ -587,24 +586,28 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(tempImg, 0, 0, w, h);
 
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                safeLocalStorageSet(`cody_${key}`, compressedDataUrl);
-                resolve();
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7); // 0.85 -> 0.7로 축소
+                const isSaved = safeLocalStorageSet(`cody_${key}`, compressedDataUrl);
+                resolve(isSaved);
               };
               tempImg.src = evt.target.result;
             };
             reader.readAsDataURL(file);
           });
 
+          if (!success && isQuotaAlertShown) {
+            break;
+          }
+
           currentFileIdx++;
         }
+        if (isQuotaAlertShown) break;
       }
 
       loadingOverlay.style.display = 'none';
       renderGrid();
     }
 
-    // --- [JSON 프로젝트 내보내기 / 불러오기] ---
     function exportJSONProject() {
       const projectData = {
         version: '1.0',
@@ -654,7 +657,6 @@
           }
 
           if (confirm('프로젝트를 불러오면 기존에 작성 중이던 모든 사진이 교체됩니다. 계속하시겠습니까?')) {
-            // 기존 데이터 삭제
             Object.keys(localStorage).forEach(k => {
               if (k.startsWith('cody_cell_') || k.startsWith('cody_filters_')) {
                 localStorage.removeItem(k);
@@ -684,26 +686,27 @@
       reader.readAsText(file);
     }
 
+    /* 저장소 함수 (개선됨: 팝업 1회만 제한) */
     function safeLocalStorageSet(key, value) {
       try {
         localStorage.setItem(key, value);
         return true;
       } catch (err) {
-        if (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-          alert('⚠️ 저장 공간이 부족합니다!\n\n용량이 큰 경우 상단의 [💾 프로젝트 저장 (.json)] 버튼으로 백업한 후 이용해주세요.');
-        } else {
-          alert('데이터 저장 중 오류가 발생했습니다.');
+        if ((err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED') && !isQuotaAlertShown) {
+          isQuotaAlertShown = true;
+          alert('⚠️ 브라우저 저장 공간이 가득 찼습니다!\n\n일부 사진만 저장되었습니다. 상단의 [💾 프로젝트 저장 (.json)] 기능을 활용하시거나 필요 없는 칸을 비워주세요.');
         }
         return false;
       }
     }
 
     function processAndSaveImage(file, key, img, placeholder, deleteBtn) {
+      isQuotaAlertShown = false;
       const reader = new FileReader();
       reader.onload = function(evt) {
         const tempImg = new Image();
         tempImg.onload = function() {
-          const maxDim = 800;
+          const maxDim = 600;
           let w = tempImg.width, h = tempImg.height;
           if (w > maxDim || h > maxDim) {
             if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
@@ -715,7 +718,7 @@
           const ctx = canvas.getContext('2d');
           ctx.drawImage(tempImg, 0, 0, w, h);
 
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
 
           if (safeLocalStorageSet(`cody_${key}`, compressedDataUrl)) {
             img.src = compressedDataUrl;
