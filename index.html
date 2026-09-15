@@ -16,7 +16,6 @@
     h1 { font-size: 20px; color: #4da6ff; }
     p.guide { margin-bottom: 12px; color: #aaa; font-size: 12px; text-align: center; line-height: 1.4; }
     
-    /* 그리드 규격 조절 컨트롤 */
     .grid-control-panel {
       display: flex;
       align-items: center;
@@ -49,7 +48,6 @@
     .btn-swap { background-color: #ff9800; color: white; }
     .btn-swap.active { background-color: #e65100; box-shadow: 0 0 8px #ff9800; }
     
-    /* 스크롤 가능한 그리드 래퍼 */
     .grid-wrapper {
       width: 100%;
       max-width: 600px;
@@ -89,7 +87,6 @@
     .cell .placeholder svg { width: 14px; height: 14px; fill: #666; }
     .cell input[type="file"] { display: none; }
 
-    /* 개별 칸 삭제 버튼 (✕) */
     .btn-delete-cell {
       position: absolute;
       top: 2px;
@@ -110,10 +107,8 @@
     }
     .btn-delete-cell.active { display: block; }
 
-    /* 캡처 시 테두리 및 그림자 제거 */
     .capturing .cell { border: none !important; box-shadow: none !important; }
 
-    /* 편집 패널 */
     #edit-panel {
       display: none;
       width: 100%;
@@ -136,7 +131,6 @@
     .filter-item input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #4da6ff; border-radius: 50%; cursor: pointer; }
     .filter-value { font-size: 10px; text-align: right; color: #888; }
 
-    /* 저장 중 로딩 오버레이 */
     #loading-overlay {
       display: none;
       position: fixed;
@@ -166,9 +160,8 @@
     <svg viewBox="0 0 24 24"><path d="M12 4.5C10.62 4.5 9.5 5.62 9.5 7c0 .52.16 1 .44 1.4L3 13.5v2h18v-2l-6.94-5.1c.28-.4.44-.88.44-1.4 0-1.38-1.12-2.5-2.5-2.5zm0 2c.28 0 .5.22.5.5s-.22.5-.5.5-.5-.22-.5-.5.22-.5.5-.5zm-7 8.5l7-5.15 7 5.15H5z"/></svg>
     <h1>코디표 매니저</h1>
   </div>
-  <p class="guide">클릭/드래그로 이미지 등록 · 위치 교환 버튼으로 사진 이동 가능</p>
+  <p id="guide-text" class="guide">클릭/드래그로 이미지 등록 · 위치 교환 버튼으로 사진 이동 가능</p>
 
-  <!-- 그리드 규격 조절 드롭다운 -->
   <div class="grid-control-panel">
     <div class="grid-control-item">
       <label for="select-cols">가로(열):</label>
@@ -237,6 +230,7 @@
     const selectRows = document.getElementById('select-rows');
     const loadingOverlay = document.getElementById('loading-overlay');
     const btnSwapMode = document.getElementById('btn-swap-mode');
+    const guideText = document.getElementById('guide-text');
     
     let currentCols = parseInt(localStorage.getItem('cody_grid_cols')) || 5;
     let currentRows = parseInt(localStorage.getItem('cody_grid_rows')) || 5;
@@ -277,6 +271,19 @@
       }
     }
 
+    /* 하위 호환성 및 안전한 JSON 파싱 함수 */
+    function getSavedFilterObject(key) {
+      const saved = localStorage.getItem(`cody_filters_${key}`);
+      if (!saved) return defaultFilters;
+      try {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) return parsed;
+      } catch (e) {
+        // 기존 문자열 형식 데이터일 경우 초기값으로 리셋
+      }
+      return defaultFilters;
+    }
+
     function renderGrid() {
       gridContainer.innerHTML = '';
       gridContainer.style.gridTemplateColumns = `repeat(${currentCols}, 1fr)`;
@@ -307,16 +314,14 @@
           deleteBtn.innerHTML = '✕';
 
           const savedImage = localStorage.getItem(`cody_${key}`);
-          const savedFilterObj = JSON.parse(localStorage.getItem(`cody_filters_${key}`));
+          const savedFilterObj = getSavedFilterObject(key);
 
           if (savedImage) {
             img.src = savedImage;
             img.style.display = 'block';
             placeholder.style.display = 'none';
             deleteBtn.classList.add('active');
-            if (savedFilterObj) {
-              img.style.filter = buildFilterString(savedFilterObj);
-            }
+            img.style.filter = buildFilterString(savedFilterObj);
           }
 
           cell.appendChild(placeholder);
@@ -324,13 +329,11 @@
           cell.appendChild(fileInput);
           cell.appendChild(deleteBtn);
 
-          // 삭제 버튼 이벤트
           deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             clearSingleCell(key, cell, img, placeholder, deleteBtn);
           });
 
-          // 클릭 및 교환 이벤트
           cell.addEventListener('click', () => {
             if (isSwapMode) {
               handleSwapClick(key, cell);
@@ -356,13 +359,11 @@
             openEditPanel(key);
           });
 
-          // 파일 업로드 이벤트 (이미지 자동 리사이징 압축)
           fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) processAndSaveImage(file, key, img, placeholder, deleteBtn);
           });
 
-          // PC 드래그 앤 드롭 업로드 지원
           cell.addEventListener('dragover', (e) => { e.preventDefault(); cell.classList.add('dragover'); });
           cell.addEventListener('dragleave', () => { cell.classList.remove('dragover'); });
           cell.addEventListener('drop', (e) => {
@@ -378,13 +379,12 @@
       }
     }
 
-    /* 이미지 리사이징 처리 (localStorage 용량 초과 방지) */
     function processAndSaveImage(file, key, img, placeholder, deleteBtn) {
       const reader = new FileReader();
       reader.onload = function(evt) {
         const tempImg = new Image();
         tempImg.onload = function() {
-          const maxDim = 800; // 최대 해상도 제한
+          const maxDim = 800;
           let w = tempImg.width, h = tempImg.height;
           if (w > maxDim || h > maxDim) {
             if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
@@ -408,7 +408,7 @@
             localStorage.setItem(`cody_${key}`, compressedDataUrl);
             localStorage.removeItem(`cody_filters_${key}`);
           } catch(err) {
-            alert('저장 공간이 부족합니다. 용량이 작은 이미지를 사용해 주세요.');
+            alert('저장 공간이 부족합니다.');
           }
         };
         tempImg.src = evt.target.result;
@@ -416,7 +416,6 @@
       reader.readAsDataURL(file);
     }
 
-    /* 위치 교환 기능 */
     function toggleSwapMode() {
       isSwapMode = !isSwapMode;
       swapSourceKey = null;
@@ -426,10 +425,14 @@
 
       if (isSwapMode) {
         btnSwapMode.classList.add('active');
-        btnSwapMode.innerText = '교환 진행 중...';
+        btnSwapMode.innerText = '취소하기';
+        guideText.innerText = '첫 번째로 이동할 칸을 선택하세요.';
+        guideText.style.color = '#ff9800';
       } else {
         btnSwapMode.classList.remove('active');
         btnSwapMode.innerText = '위치 교환';
+        guideText.innerText = '클릭/드래그로 이미지 등록 · 위치 교환 버튼으로 사진 이동 가능';
+        guideText.style.color = '#aaa';
       }
     }
 
@@ -437,9 +440,9 @@
       if (!swapSourceKey) {
         swapSourceKey = key;
         cell.classList.add('swap-source');
+        guideText.innerText = '바꿔 넣을 두 번째 칸을 선택하세요.';
       } else {
         if (swapSourceKey !== key) {
-          // 데이터 교환
           const img1 = localStorage.getItem(`cody_${swapSourceKey}`);
           const filter1 = localStorage.getItem(`cody_filters_${swapSourceKey}`);
           const img2 = localStorage.getItem(`cody_${key}`);
@@ -492,7 +495,7 @@
 
     function openEditPanel(key) {
       editPanel.style.display = 'block';
-      const savedFilterObj = JSON.parse(localStorage.getItem(`cody_filters_${key}`)) || defaultFilters;
+      const savedFilterObj = getSavedFilterObject(key);
 
       filters.brightness.value = savedFilterObj.brightness;
       filters.contrast.value = savedFilterObj.contrast;
@@ -547,7 +550,6 @@
       }
     }
 
-    /* 고화질 이미지 다운로드 + 로딩 스피너 적용 */
     function downloadGrid() {
       loadingOverlay.style.display = 'flex';
       document.body.classList.add('capturing');
@@ -577,10 +579,15 @@
       }, 100);
     }
 
+    /* 안전한 전체 초기화 (규격 정보 유지) */
     function resetGrid() {
       if (confirm('모든 칸의 이미지를 초기화하시겠습니까?')) {
-        localStorage.clear();
-        location.reload();
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('cody_cell_') || key.startsWith('cody_filters_')) {
+            localStorage.removeItem(key);
+          }
+        });
+        renderGrid();
       }
     }
 
