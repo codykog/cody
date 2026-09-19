@@ -209,7 +209,7 @@
     <svg viewBox="0 0 24 24"><path d="M12 4.5C10.62 4.5 9.5 5.62 9.5 7c0 .52.16 1 .44 1.4L3 13.5v2h18v-2l-6.94-5.1c.28-.4.44-.88.44-1.4 0-1.38-1.12-2.5-2.5-2.5zm0 2c.28 0 .5.22.5.5s-.22.5-.5.5-.5-.22-.5-.5.22-.5.5-.5zm-7 8.5l7-5.15 7 5.15H5z"/></svg>
     <h1>코디표 매니저</h1>
   </div>
-  <p id="guide-text" class="guide">여러 사진을 한꺼번에 드래그하여 업로드하세요! · 클릭하여 색감/구도 편집</p>
+  <p id="guide-text" class="guide">여러 사진을 한꺼번에 드래그하여 업로드하세요! · 셀 선택 후 Ctrl+V로 이미지 붙여넣기 가능</p>
 
   <div class="grid-control-panel">
     <div class="grid-control-item">
@@ -324,11 +324,9 @@
     let isSwapMode = false;
     let swapSourceKey = null;
 
-    // 1. 페이지 최초 로드 시 localStorage에 저장된 값을 읽어서 includeEmptyBg에 적용 (없으면 기본값 true)
     const savedIncludeEmptyBg = localStorage.getItem('cody_include_empty_bg');
     let includeEmptyBg = savedIncludeEmptyBg !== null ? JSON.parse(savedIncludeEmptyBg) : true;
 
-    // 불러온 상태에 맞게 토글 버튼의 문구 업데이트
     function updateBgToggleButtonUI() {
       if (btnBgToggle) {
         btnBgToggle.innerText = includeEmptyBg ? '빈 셀 배경 포함' : '빈 셀 배경 제외';
@@ -456,15 +454,12 @@
               return;
             }
 
-            if (!img.src || img.style.display === 'none') {
-              fileInput.click();
-              closeEditPanel();
-              return;
+            if (currentSelectedCell && currentSelectedCell !== cell) {
+              currentSelectedCell.classList.remove('selected');
             }
 
-            if (currentSelectedCell) currentSelectedCell.classList.remove('selected');
-            
             if (currentSelectedCell === cell) {
+              currentSelectedCell.classList.remove('selected');
               currentSelectedCell = null;
               closeEditPanel();
               return;
@@ -472,7 +467,12 @@
 
             currentSelectedCell = cell;
             cell.classList.add('selected');
-            openEditPanel(key);
+
+            if (img.src && img.style.display !== 'none') {
+              openEditPanel(key);
+            } else {
+              closeEditPanel();
+            }
           });
 
           fileInput.addEventListener('change', (e) => {
@@ -533,6 +533,43 @@
         }
       }
     }
+
+    // Ctrl+V 클립보드 이미지 붙여넣기 이벤트 핸들러
+    window.addEventListener('paste', (e) => {
+      const clipboardItems = e.clipboardData && e.clipboardData.items;
+      if (!clipboardItems) return;
+
+      let imageFile = null;
+      for (let i = 0; i < clipboardItems.length; i++) {
+        if (clipboardItems[i].type.indexOf('image') !== -1) {
+          imageFile = clipboardItems[i].getAsFile();
+          break;
+        }
+      }
+
+      if (!imageFile) return;
+
+      let targetCell = currentSelectedCell;
+
+      if (!targetCell) {
+        const allCells = Array.from(document.querySelectorAll('.cell'));
+        targetCell = allCells.find(cell => {
+          const img = cell.querySelector('img');
+          return !img.src || img.style.display === 'none';
+        });
+      }
+
+      if (targetCell) {
+        const key = targetCell.dataset.key;
+        const img = targetCell.querySelector('img');
+        const placeholder = targetCell.querySelector('.placeholder');
+        const deleteBtn = targetCell.querySelector('.btn-delete-cell');
+
+        processAndSaveImage(imageFile, key, img, placeholder, deleteBtn);
+      } else {
+        alert('붙여넣을 셀을 선택하거나 빈 셀이 남아있는지 확인해 주세요.');
+      }
+    });
 
     gridWrapper.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -746,6 +783,10 @@
             deleteBtn.classList.add('active');
             applyTransformAndFiltersToImage(img, defaultFilters);
             localStorage.removeItem(`cody_filters_${key}`);
+
+            if (currentSelectedCell && currentSelectedCell.dataset.key === key) {
+              openEditPanel(key);
+            }
           }
         };
         tempImg.src = evt.target.result;
@@ -789,7 +830,7 @@
       } else {
         btnSwapMode.classList.remove('active');
         btnSwapMode.innerText = '위치 교환';
-        guideText.innerText = '여러 사진을 한꺼번에 드래그하여 업로드하세요! · 클릭하여 색감/구도 편집';
+        guideText.innerText = '여러 사진을 한꺼번에 드래그하여 업로드하세요! · 셀 선택 후 Ctrl+V로 이미지 붙여넣기 가능';
         guideText.style.color = '#aaa';
       }
     }
@@ -807,7 +848,6 @@
       }
     }
 
-    // 2. 「빈 셀 배경」 토글 클릭 시 includeEmptyBg 변경 및 localStorage 저장
     function toggleBgOption() {
       includeEmptyBg = !includeEmptyBg;
       localStorage.setItem('cody_include_empty_bg', JSON.stringify(includeEmptyBg));
@@ -994,7 +1034,7 @@
     }
 
     initSelectOptions();
-    updateBgToggleButtonUI(); // 복원된 includeEmptyBg 상태로 토글 버튼 UI 갱신
+    updateBgToggleButtonUI();
     renderGrid();
   </script>
 </body>
